@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ScanX — Barcode Scanner</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+:root{--bg:#0d0f0e;--surface:#141714;--surface2:#1c201b;--border:#252925;--text:#d8ddd7;--muted:#5a635a;--accent:#aaff44;--accent-dim:#5a8a1f;--accent-glow:rgba(170,255,68,.18);--danger:#ff4455;--r:6px;--mono:'JetBrains Mono',monospace;--display:'Syne',sans-serif}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:14px;line-height:1.6;min-height:100vh;background-image:radial-gradient(circle,#1e231e 1px,transparent 1px);background-size:28px 28px}
+/* HEADER */
+.header{position:relative;overflow:hidden;background:linear-gradient(135deg,#111411,#0d0f0e);border-bottom:1px solid var(--border);padding:24px 16px 20px;text-align:center}
+.logo{display:inline-flex;align-items:center;gap:10px;font-family:var(--display);font-size:clamp(26px,6vw,44px);font-weight:800;color:#fff}
+.logo-icon{color:var(--accent);animation:pulse 3s ease-in-out infinite}
+.logo em{color:var(--accent);font-style:normal}
+.header-sub{margin-top:4px;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
+/* MAIN */
+.main{max-width:860px;margin:0 auto;padding:20px 14px 60px;display:flex;flex-direction:column;gap:16px}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+/* TABS */
+.mode-tabs{display:flex;gap:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:4px;width:fit-content}
+.mode-tab{display:inline-flex;align-items:center;gap:7px;padding:8px 18px;border:1px solid transparent;border-radius:calc(var(--r) - 2px);background:transparent;color:var(--muted);font-family:var(--mono);font-size:13px;cursor:pointer;transition:.2s}
+.mode-tab.active{background:var(--surface2);color:var(--accent);border-color:var(--border)}
+/* CAMERA */
+.camera-panel{position:relative;aspect-ratio:16/9;background:#000;border-color:#2e352d}
+.camera-panel.active{box-shadow:0 0 0 1px var(--accent-dim),0 0 30px var(--accent-glow);border-color:var(--accent-dim)}
+#videoElement{width:100%;height:100%;object-fit:cover;display:block}
+.loading-overlay{position:absolute;inset:0;background:rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:10;transition:opacity .4s}
+.loading-overlay.hidden{opacity:0;pointer-events:none}
+.spinner{width:36px;height:36px;border:3px solid #2e352d;border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+.loading-overlay p{font-size:11px;letter-spacing:.15em;color:var(--muted);text-transform:uppercase}
+.scan-flash{position:absolute;inset:0;background:var(--accent);opacity:0;pointer-events:none;z-index:9}
+.scan-flash.flash{animation:flash .4s ease forwards}
+.viewfinder{position:absolute;inset:0;pointer-events:none}
+.corner{position:absolute;width:24px;height:24px;border-color:var(--accent);border-style:solid;opacity:0;transition:opacity .4s}
+.camera-panel.active .corner{opacity:1}
+.corner.tl{top:16px;left:16px;border-width:2px 0 0 2px;border-radius:2px 0 0 0}
+.corner.tr{top:16px;right:16px;border-width:2px 2px 0 0;border-radius:0 2px 0 0}
+.corner.bl{bottom:16px;left:16px;border-width:0 0 2px 2px;border-radius:0 0 0 2px}
+.corner.br{bottom:16px;right:16px;border-width:0 2px 2px 0;border-radius:0 0 2px 0}
+.scan-beam{position:absolute;left:16px;right:16px;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);box-shadow:0 0 12px var(--accent);top:16px;opacity:0}
+.camera-panel.active .scan-beam{opacity:1;animation:beam 2.4s ease-in-out infinite}
+.camera-badge{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.6);border:1px solid #2e352d;border-radius:20px;padding:4px 14px;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);backdrop-filter:blur(6px)}
+/* CONTROLS */
+.controls-row{display:flex;gap:10px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;gap:7px;padding:10px 18px;border:1px solid transparent;border-radius:var(--r);font-family:var(--mono);font-size:13px;font-weight:500;cursor:pointer;transition:.2s;white-space:nowrap}
+.btn:active:not(:disabled){transform:scale(.97)}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.btn-primary{background:var(--accent);color:#0d0f0e;border-color:var(--accent);font-weight:700}
+.btn-primary:hover:not(:disabled){background:#c5ff6a}
+.btn-danger{background:rgba(255,68,85,.15);color:var(--danger);border-color:rgba(255,68,85,.3)}
+.btn-accent{background:var(--surface2);color:var(--accent);border-color:var(--accent-dim)}
+.btn-ghost{background:var(--surface2);color:var(--muted);border-color:var(--border)}
+.btn-ghost:hover:not(:disabled){color:var(--text);border-color:#2e352d}
+/* UPLOAD */
+.upload-panel{padding:0}
+.drop-zone{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;min-height:200px;padding:40px 24px;cursor:pointer;border:2px dashed var(--border);border-radius:var(--r);background:var(--surface);transition:.2s;position:relative}
+.drop-zone:hover,.drop-zone.dragover{border-color:var(--accent-dim);background:var(--accent-glow)}
+.drop-icon{font-size:36px;color:var(--muted);transition:.2s}
+.drop-zone:hover .drop-icon{color:var(--accent);transform:translateY(-4px)}
+.drop-title{font-family:var(--display);font-size:17px;font-weight:700;color:var(--text)}
+.drop-sub{font-size:12px;color:var(--muted);text-align:center}
+.file-input-hidden{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.upload-preview-row{display:flex;gap:20px;padding:20px;flex-wrap:wrap;animation:slidein .3s ease}
+.upload-img-wrap{position:relative;flex:0 0 auto;max-width:280px;width:100%;border-radius:var(--r);overflow:hidden;border:1px solid #2e352d;background:#000}
+.upload-img-wrap img{width:100%;display:block;object-fit:contain;max-height:260px}
+.upload-scanning-overlay{position:absolute;inset:0;background:rgba(0,0,0,.7);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;font-size:12px;color:var(--muted);letter-spacing:.1em}
+.upload-result-col{flex:1;min-width:180px;display:flex;flex-direction:column;gap:8px;padding-top:4px}
+.upload-result-label{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+.upload-status{font-size:13px;font-weight:500;color:var(--text);line-height:1.6;white-space:pre-wrap}
+.upload-status.success{color:var(--accent)}
+.upload-status.error{color:var(--danger)}
+/* RESULT */
+.result-panel{padding:20px}
+.result-meta{display:flex;gap:24px;margin-bottom:14px;flex-wrap:wrap}
+.meta-item{display:flex;flex-direction:column;gap:2px}
+.meta-label{font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted)}
+.meta-value{font-size:13px;font-weight:500;color:var(--accent)}
+.result-textarea{width:100%;min-height:90px;background:var(--bg);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-family:var(--mono);font-size:13px;line-height:1.7;padding:12px 14px;resize:vertical;outline:none}
+.result-textarea::placeholder{color:var(--muted)}
+.boarding-card{margin-top:16px;background:var(--surface2);border:1px solid var(--accent-dim);border-radius:var(--r);padding:16px;animation:slidein .35s ease}
+.boarding-title{font-family:var(--display);font-size:15px;color:var(--accent);margin-bottom:12px}
+.boarding-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
+.boarding-field{display:flex;flex-direction:column;gap:2px}
+.boarding-field-label{font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+.boarding-field-value{font-size:13px;font-weight:500;color:var(--text);word-break:break-all}
+.result-actions{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
+/* HISTORY */
+.history-panel{padding:20px}
+.section-title{font-family:var(--display);font-size:16px;font-weight:700;display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.history-count{font-family:var(--mono);font-size:11px;font-weight:400;color:var(--muted);margin-left:auto}
+.table-wrapper{overflow-x:auto;border-radius:var(--r);border:1px solid var(--border)}
+.history-table{width:100%;border-collapse:collapse;font-size:12.5px}
+.history-table th{background:var(--surface2);color:var(--muted);font-size:10px;letter-spacing:.15em;text-transform:uppercase;padding:10px 14px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+.history-table td{padding:10px 14px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:top;word-break:break-all}
+.history-table tbody tr:last-child td{border-bottom:none}
+.history-table tbody tr:hover{background:var(--surface2)}
+.history-table tbody tr.new-row{animation:rowappear .4s ease}
+.history-table td:first-child{color:var(--muted);font-size:11px;width:36px}
+.type-badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}
+.type-badge.aztec{background:rgba(170,255,68,.12);color:var(--accent);border:1px solid var(--accent-dim)}
+.type-badge.pdf417{background:rgba(80,160,255,.12);color:#60a0ff;border:1px solid rgba(80,160,255,.3)}
+.type-badge.boarding{background:rgba(255,200,50,.12);color:#ffc832;border:1px solid rgba(255,200,50,.3)}
+.type-badge.unknown{background:var(--surface2);color:var(--muted);border:1px solid var(--border)}
+.empty-row td{text-align:center;color:var(--muted);padding:32px 14px;font-style:italic}
+footer{text-align:center;padding:20px;font-size:11px;color:var(--muted);letter-spacing:.1em;border-top:1px solid var(--border)}
+/* STATUS BAR */
+.status-bar{background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:10px 16px;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.status-dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex-shrink:0}
+.status-dot.green{background:var(--accent);box-shadow:0 0 6px var(--accent)}
+.status-dot.red{background:var(--danger)}
+/* ANIMATIONS */
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+@keyframes beam{0%{top:16px}50%{top:calc(100% - 18px)}100%{top:16px}}
+@keyframes flash{0%{opacity:.35}100%{opacity:0}}
+@keyframes rowappear{from{opacity:0;transform:translateY(-6px);background:var(--accent-glow)}to{opacity:1;transform:translateY(0);background:transparent}}
+@keyframes slidein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:600px){.main{padding:14px 10px 50px;gap:12px}.btn{padding:9px 12px;font-size:12px}.camera-panel{aspect-ratio:4/3}.upload-preview-row{flex-direction:column}}
+::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:#2e352d;border-radius:3px}
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="logo"><span class="logo-icon">⬡</span><span>Scan<em>X</em></span></div>
+  <p class="header-sub">Aztec · PDF417 · Boarding Pass Decoder</p>
+</header>
+
+<main class="main">
+
+  <!-- Status bar -->
+  <div class="status-bar" id="statusBar">
+    <span class="status-dot" id="statusDot"></span>
+    <span id="statusMsg">Ready — tap Start Scanner or upload an image</span>
+  </div>
+
+  <!-- Mode tabs -->
+  <div class="mode-tabs">
+    <button class="mode-tab active" id="tabCamera">📷 Live Camera</button>
+    <button class="mode-tab" id="tabUpload">🖼 Upload Image</button>
+  </div>
+
+  <!-- Camera panel -->
+  <section class="panel camera-panel" id="cameraPanel">
+    <div class="loading-overlay hidden" id="loadingOverlay">
+      <div class="spinner"></div><p>Starting camera…</p>
+    </div>
+    <div class="scan-flash" id="scanFlash"></div>
+    <video id="videoElement" autoplay muted playsinline></video>
+    <div class="viewfinder">
+      <span class="corner tl"></span><span class="corner tr"></span>
+      <span class="corner bl"></span><span class="corner br"></span>
+      <div class="scan-beam" id="scanBeam"></div>
+    </div>
+    <div class="camera-badge" id="cameraBadge">Camera</div>
+  </section>
+
+  <!-- Camera controls -->
+  <section class="controls-row" id="cameraControls">
+    <button class="btn btn-primary" id="btnStart">▶ Start Scanner</button>
+    <button class="btn btn-danger" id="btnStop" disabled>■ Stop</button>
+    <button class="btn btn-ghost" id="btnSwitch" disabled>⇄ Switch Camera</button>
+  </section>
+
+  <!-- Upload panel -->
+  <section class="panel upload-panel" id="uploadPanel" hidden>
+    <div class="drop-zone" id="dropZone">
+      <div class="drop-icon">⬆</div>
+      <p class="drop-title">Tap to choose a barcode image</p>
+      <p class="drop-sub">PNG · JPG · GIF · WebP · BMP — or paste from clipboard</p>
+      <input type="file" id="fileInput" accept="image/*" class="file-input-hidden"/>
+    </div>
+    <div class="upload-preview-row" id="uploadPreviewRow" hidden>
+      <div class="upload-img-wrap">
+        <img id="uploadedImg" src="" alt="Barcode"/>
+        <div class="upload-scanning-overlay" id="uploadScanOvl" hidden>
+          <div class="spinner"></div><span>Decoding…</span>
+        </div>
+      </div>
+      <div class="upload-result-col">
+        <p class="upload-result-label">Status</p>
+        <p class="upload-status" id="uploadStatus">—</p>
+        <button class="btn btn-ghost" id="btnRetry" style="margin-top:auto;align-self:flex-start">↩ Try another</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Result panel -->
+  <section class="panel result-panel">
+    <div class="result-meta">
+      <div class="meta-item"><span class="meta-label">Type</span><span class="meta-value" id="barcodeType">—</span></div>
+      <div class="meta-item"><span class="meta-label">Scanned At</span><span class="meta-value" id="scanTime">—</span></div>
+    </div>
+    <textarea id="resultText" class="result-textarea" readonly placeholder="Decoded barcode content will appear here…"></textarea>
+    <div class="boarding-card" id="boardingCard" hidden>
+      <h3 class="boarding-title">✈ Boarding Pass Detected</h3>
+      <div class="boarding-grid" id="boardingGrid"></div>
+    </div>
+    <div class="result-actions">
+      <button class="btn btn-accent" id="btnCopy" disabled>⧉ Copy</button>
+      <button class="btn btn-ghost" id="btnClear" disabled>✕ Clear History</button>
+      <button class="btn btn-ghost" id="btnExport" disabled>↓ Export CSV</button>
+    </div>
+  </section>
+
+  <!-- History -->
+  <section class="panel history-panel">
+    <h2 class="section-title">Scan History <span class="history-count" id="historyCount">0 scans</span></h2>
+    <div class="table-wrapper">
+      <table class="history-table">
+        <thead><tr><th>#</th><th>Time</th><th>Type</th><th>Value</th></tr></thead>
+        <tbody id="historyBody">
+          <tr class="empty-row" id="emptyRow"><td colspan="4">No scans yet. Start scanner or upload an image.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+<footer>ScanX · ZXing · Aztec · PDF417 · Boarding Passes</footer>
+
+<!-- ZXing loaded LAST, after DOM is ready -->
+<script src="https://unpkg.com/@zxing/browser@0.1.5/umd/index.min.js"></script>
+<script>
+'use strict';
+
+/* ── DOM ── */
+const videoEl      = document.getElementById('videoElement');
+const loadingOvl   = document.getElementById('loadingOverlay');
+const scanFlash    = document.getElementById('scanFlash');
+const cameraPanel  = document.getElementById('cameraPanel');
+const cameraBadge  = document.getElementById('cameraBadge');
+const btnStart     = document.getElementById('btnStart');
+const btnStop      = document.getElementById('btnStop');
+const btnSwitch    = document.getElementById('btnSwitch');
+const btnCopy      = document.getElementById('btnCopy');
+const btnClear     = document.getElementById('btnClear');
+const btnExport    = document.getElementById('btnExport');
+const btnRetry     = document.getElementById('btnRetry');
+const barcodeTypeEl= document.getElementById('barcodeType');
+const scanTimeEl   = document.getElementById('scanTime');
+const resultTextEl = document.getElementById('resultText');
+const boardingCard = document.getElementById('boardingCard');
+const boardingGrid = document.getElementById('boardingGrid');
+const historyBody  = document.getElementById('historyBody');
+const historyCount = document.getElementById('historyCount');
+const tabCamera    = document.getElementById('tabCamera');
+const tabUpload    = document.getElementById('tabUpload');
+const cameraControls=document.getElementById('cameraControls');
+const uploadPanel  = document.getElementById('uploadPanel');
+const dropZone     = document.getElementById('dropZone');
+const fileInput    = document.getElementById('fileInput');
+const uploadPreviewRow=document.getElementById('uploadPreviewRow');
+const uploadedImg  = document.getElementById('uploadedImg');
+const uploadScanOvl= document.getElementById('uploadScanOvl');
+const uploadStatus = document.getElementById('uploadStatus');
+const statusBar    = document.getElementById('statusBar');
+const statusDot    = document.getElementById('statusDot');
+const statusMsg    = document.getElementById('statusMsg');
+
+/* ── State ── */
+let codeReader = null, isScanning = false, lastScan = '';
+let scanHistory = [], cameras = [], cameraIndex = 0;
+
+/* ── Status bar ── */
+function setStatus(msg, color){
+  statusMsg.textContent = msg;
+  statusDot.className = 'status-dot' + (color ? ' '+color : '');
+}
+
+/* ── Beep ── */
+function beep(){
+  try{
+    const ctx = new(window.AudioContext||window.webkitAudioContext)();
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.type='sine'; o.frequency.value=880;
+    g.gain.setValueAtTime(.3,ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.18);
+    o.start(); o.stop(ctx.currentTime+.18);
+    o.onended=()=>ctx.close();
+  }catch(_){}
+}
+
+/* ── Flash ── */
+function flash(){
+  scanFlash.classList.remove('flash');
+  void scanFlash.offsetWidth;
+  scanFlash.classList.add('flash');
+}
+
+/* ── Camera enumerate ── */
+async function getCameras(){
+  if(cameras.length) return cameras;
+  try{
+    const s = await navigator.mediaDevices.getUserMedia({video:true});
+    s.getTracks().forEach(t=>t.stop());
+    const devs = await navigator.mediaDevices.enumerateDevices();
+    cameras = devs.filter(d=>d.kind==='videoinput');
+  }catch(_){ cameras=[]; }
+  return cameras;
+}
+
+function camLabel(dev){
+  if(!dev) return 'Camera';
+  const l=(dev.label||'').toLowerCase();
+  if(l.includes('back')||l.includes('rear')||l.includes('environment')) return 'Rear Camera';
+  if(l.includes('front')||l.includes('user')) return 'Front Camera';
+  return 'Camera '+(cameraIndex+1);
+}
+
+/* ── Start scanner ── */
+async function startScanner(){
+  if(isScanning) return;
+  setStatus('Starting camera…');
+  loadingOvl.classList.remove('hidden');
+  btnStart.disabled = true;
+
+  // Wait for ZXing
+  let tries = 0;
+  while(typeof ZXingBrowser === 'undefined' && tries < 20){
+    await new Promise(r=>setTimeout(r,200)); tries++;
+  }
+  if(typeof ZXingBrowser === 'undefined'){
+    loadingOvl.classList.add('hidden');
+    btnStart.disabled = false;
+    setStatus('ZXing library failed to load. Check internet connection.','red');
+    resultTextEl.value = '⚠ ZXing library could not load.\n\nPlease check your internet connection and reload the page.';
+    return;
+  }
+
+  try{
+    const {BrowserMultiFormatReader, BarcodeFormat, DecodeHintType} = ZXingBrowser;
+    const hints = new Map();
+    hints.set(DecodeHintType.POSSIBLE_FORMATS,[BarcodeFormat.AZTEC, BarcodeFormat.PDF_417]);
+    hints.set(DecodeHintType.TRY_HARDER, true);
+
+    codeReader = new BrowserMultiFormatReader(hints,{
+      delayBetweenScanAttempts:200,
+      delayBetweenScanSuccess:1500
+    });
+
+    await getCameras();
+    const deviceId = cameras[cameraIndex]?.deviceId ?? undefined;
+
+    await codeReader.decodeFromVideoDevice(deviceId, videoEl, onScanResult);
+
+    isScanning = true;
+    cameraPanel.classList.add('active');
+    loadingOvl.classList.add('hidden');
+    btnStop.disabled = false;
+    btnSwitch.disabled = cameras.length < 2;
+    btnStart.disabled = true;
+    cameraBadge.textContent = camLabel(cameras[cameraIndex]);
+    setStatus('Scanning… point camera at an Aztec or PDF417 barcode','green');
+
+  }catch(err){
+    loadingOvl.classList.add('hidden');
+    btnStart.disabled = false;
+    isScanning = false;
+    const msg = errMsg(err);
+    setStatus(msg,'red');
+    resultTextEl.value = msg;
+  }
+}
+
+/* ── Stop scanner ── */
+function stopScanner(){
+  if(codeReader){ codeReader.reset(); codeReader=null; }
+  if(videoEl.srcObject){ videoEl.srcObject.getTracks().forEach(t=>t.stop()); videoEl.srcObject=null; }
+  isScanning=false;
+  cameraPanel.classList.remove('active');
+  loadingOvl.classList.add('hidden');
+  btnStart.disabled=false; btnStop.disabled=true; btnSwitch.disabled=true;
+  setStatus('Scanner stopped');
+}
+
+/* ── Switch camera ── */
+async function switchCamera(){
+  if(cameras.length<2) return;
+  cameraIndex=(cameraIndex+1)%cameras.length;
+  stopScanner(); await startScanner();
+}
+
+/* ── Scan result ── */
+function onScanResult(result, err){
+  if(err){ if(err.name==='NotFoundException') return; return; }
+  if(!result) return;
+  const text = result.getText();
+  const type = fmtName(result.getBarcodeFormat());
+  if(text===lastScan) return;
+  lastScan=text;
+  setTimeout(()=>{ lastScan=''; },2000);
+  beep(); flash();
+  showResult(text, type, new Date());
+}
+
+/* ── Show result ── */
+function showResult(text, type, ts){
+  barcodeTypeEl.textContent = type;
+  scanTimeEl.textContent = fmtTime(ts);
+  resultTextEl.value = text;
+  btnCopy.disabled = false;
+  const bp = parseBP(text, type);
+  if(bp) renderBP(bp); else boardingCard.hidden=true;
+  const entry={ts,type,value:text,isBoarding:!!bp};
+  scanHistory.unshift(entry);
+  addHistoryRow(entry, scanHistory.length);
+  btnClear.disabled=false; btnExport.disabled=false;
+  setStatus('✓ Decoded: '+type,'green');
+}
+
+/* ── Format name ── */
+function fmtName(f){
+  const m={0:'AZTEC',10:'PDF_417',11:'QR_CODE',4:'CODE_128',7:'EAN_13'};
+  return m[f]||'FORMAT_'+f;
+}
+
+/* ── Boarding pass parser ── */
+function parseBP(text, type){
+  if(type!=='PDF_417'&&type!=='AZTEC') return null;
+  if(!text||text[0]!=='M'||text.length<60) return null;
+  try{
+    const from=text.substring(30,33).trim(), to=text.substring(33,36).trim();
+    if(!/^[A-Z]{3}$/.test(from)||!/^[A-Z]{3}$/.test(to)) return null;
+    const nameParts=text.substring(2,22).trim().split('/');
+    const ln=nameParts[0]||'', fn=(nameParts[1]||'').trim();
+    const carrier=text.substring(36,39).trim();
+    const flight=carrier+(text.substring(39,44).trim().replace(/^0+/,''));
+    const julian=parseInt(text.substring(44,47),10);
+    const seat=text.substring(48,55).trim();
+    const seq=text.substring(55,60).trim().replace(/^0+/,'');
+    const pnr=text.substring(23,30).trim();
+    return{passenger:fn?fn+' '+ln:ln,pnr,from,to,flight,date:julianDate(julian),seat,sequence:seq,eTicket:text[22]==='E'?'Electronic':'Paper'};
+  }catch(_){return null;}
+}
+
+function julianDate(j){
+  if(!j||isNaN(j)) return '—';
+  const now=new Date(), d=new Date(now.getFullYear(),0); d.setDate(j);
+  if(d<now&&(now-d)>86400000){d.setFullYear(now.getFullYear()+1,0);d.setDate(j);}
+  return d.toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'});
+}
+
+function renderBP(data){
+  const fields=[
+    {label:'Passenger',value:data.passenger},{label:'PNR',value:data.pnr},
+    {label:'From',value:data.from},{label:'To',value:data.to},
+    {label:'Flight',value:data.flight},{label:'Date',value:data.date},
+    {label:'Seat',value:data.seat},{label:'Sequence',value:data.sequence},
+    {label:'Ticket',value:data.eTicket}
+  ];
+  boardingGrid.innerHTML=fields.map(f=>`<div class="boarding-field"><span class="boarding-field-label">${f.label}</span><span class="boarding-field-value">${f.value||'—'}</span></div>`).join('');
+  boardingCard.hidden=false;
+}
+
+/* ── History ── */
+function addHistoryRow(entry, total){
+  document.getElementById('emptyRow')?.remove();
+  const tr=document.createElement('tr'); tr.className='new-row';
+  const bc=entry.isBoarding?'boarding':entry.type==='AZTEC'?'aztec':entry.type==='PDF_417'?'pdf417':'unknown';
+  const dt=entry.isBoarding?'BOARDING':entry.type;
+  tr.innerHTML=`<td>${total}</td><td>${fmtTime(entry.ts)}</td><td><span class="type-badge ${bc}">${dt}</span></td><td>${esc(entry.value.substring(0,120))}${entry.value.length>120?'…':''}</td>`;
+  historyBody.insertBefore(tr,historyBody.firstChild);
+  historyCount.textContent=`${scanHistory.length} scan${scanHistory.length!==1?'s':''}`;
+}
+
+function clearHistory(){
+  scanHistory=[]; lastScan=''; historyBody.innerHTML='';
+  const tr=document.createElement('tr'); tr.id='emptyRow'; tr.className='empty-row';
+  tr.innerHTML='<td colspan="4">No scans yet. Start scanner or upload an image.</td>';
+  historyBody.appendChild(tr);
+  historyCount.textContent='0 scans';
+  btnClear.disabled=true; btnExport.disabled=true;
+  resultTextEl.value=''; barcodeTypeEl.textContent='—'; scanTimeEl.textContent='—';
+  boardingCard.hidden=true; btnCopy.disabled=true;
+}
+
+/* ── CSV export ── */
+function exportCSV(){
+  if(!scanHistory.length) return;
+  const rows=scanHistory.map((e,i)=>[scanHistory.length-i,e.ts.toISOString().replace('T',' ').substring(0,19),e.type,e.isBoarding?'Yes':'No',`"${e.value.replace(/"/g,'""')}"`]);
+  const csv=[['#','Timestamp','Type','Boarding Pass','Value'],...rows].map(r=>r.join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download=`scanx-${Date.now()}.csv`; a.click();
+}
+
+/* ── Copy ── */
+async function copyResult(){
+  const t=resultTextEl.value; if(!t) return;
+  try{ await navigator.clipboard.writeText(t); }catch(_){ resultTextEl.select(); document.execCommand('copy'); }
+  const orig=btnCopy.textContent; btnCopy.textContent='✓ Copied!';
+  setTimeout(()=>btnCopy.textContent=orig,1800);
+}
+
+/* ── Mode switch ── */
+function switchMode(mode){
+  if(mode==='camera'){
+    tabCamera.classList.add('active'); tabUpload.classList.remove('active');
+    cameraControls.hidden=false; uploadPanel.hidden=true; cameraPanel.hidden=false;
+  } else {
+    tabUpload.classList.add('active'); tabCamera.classList.remove('active');
+    cameraControls.hidden=true; uploadPanel.hidden=false; cameraPanel.hidden=true;
+    if(isScanning) stopScanner();
+    setStatus('Upload mode — tap the area to choose a barcode image');
+  }
+}
+
+/* ── Upload ── */
+async function handleFile(file){
+  if(!file.type.startsWith('image/')){ alert('Please select an image file.'); return; }
+  const url=URL.createObjectURL(file);
+  uploadedImg.src=url;
+  await new Promise(r=>{ uploadedImg.onload=r; uploadedImg.onerror=r; });
+  dropZone.hidden=true; uploadPreviewRow.hidden=false;
+  uploadScanOvl.hidden=false;
+  uploadStatus.textContent='Decoding…'; uploadStatus.className='upload-status';
+  setStatus('Decoding uploaded image…');
+
+  // Wait for ZXing
+  let tries=0;
+  while(typeof ZXingBrowser==='undefined'&&tries<20){
+    await new Promise(r=>setTimeout(r,200)); tries++;
+  }
+
+  if(typeof ZXingBrowser==='undefined'){
+    uploadScanOvl.hidden=true;
+    uploadStatus.textContent='⚠ ZXing not loaded. Check internet.';
+    uploadStatus.className='upload-status error';
+    setStatus('ZXing library not loaded','red');
+    return;
+  }
+
+  try{
+    const {BrowserMultiFormatReader,BarcodeFormat,DecodeHintType}=ZXingBrowser;
+    const hints=new Map();
+    hints.set(DecodeHintType.POSSIBLE_FORMATS,[BarcodeFormat.AZTEC,BarcodeFormat.PDF_417]);
+    hints.set(DecodeHintType.TRY_HARDER,true);
+    const reader=new BrowserMultiFormatReader(hints);
+    const result=await reader.decodeFromImageElement(uploadedImg);
+    uploadScanOvl.hidden=true;
+    const text=result.getText(), type=fmtName(result.getBarcodeFormat());
+    uploadStatus.textContent=`✓ Decoded as ${type}`;
+    uploadStatus.className='upload-status success';
+    beep();
+    uploadedImg.style.boxShadow='0 0 0 3px var(--accent)';
+    setTimeout(()=>uploadedImg.style.boxShadow='',500);
+    showResult(text,type,new Date());
+    URL.revokeObjectURL(url);
+  }catch(err){
+    uploadScanOvl.hidden=true;
+    URL.revokeObjectURL(url);
+    if(err?.name==='NotFoundException'||err?.message?.includes('No MultiFormat')){
+      uploadStatus.textContent='✕ No Aztec or PDF417 barcode found.\n\nTry a clearer or higher-res image.';
+    } else {
+      uploadStatus.textContent='✕ Error: '+(err.message||err);
+    }
+    uploadStatus.className='upload-status error';
+    setStatus('Could not decode image','red');
+  }
+}
+
+function resetUpload(){
+  dropZone.hidden=false; uploadPreviewRow.hidden=true;
+  uploadedImg.src=''; uploadStatus.textContent='—'; uploadStatus.className='upload-status';
+  uploadScanOvl.hidden=true; fileInput.value='';
+}
+
+/* ── Helpers ── */
+function fmtTime(d){ const p=n=>String(n).padStart(2,'0'); return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())} ${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()}`; }
+function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function errMsg(err){
+  if(!err) return 'Unknown error';
+  if(err.name==='NotAllowedError'||err.name==='PermissionDeniedError') return '🔒 Camera permission denied. Go to Settings → Safari → Camera and allow access, then reload.';
+  if(err.name==='NotFoundError') return '📷 No camera found on this device.';
+  if(err.name==='NotReadableError') return '⚠ Camera is in use by another app. Close it and try again.';
+  return err.message||'Camera error';
+}
+
+/* ── Events ── */
+btnStart.addEventListener('click', startScanner);
+btnStop.addEventListener('click', stopScanner);
+btnSwitch.addEventListener('click', switchCamera);
+btnCopy.addEventListener('click', copyResult);
+btnClear.addEventListener('click', clearHistory);
+btnExport.addEventListener('click', exportCSV);
+btnRetry.addEventListener('click', resetUpload);
+tabCamera.addEventListener('click', ()=>switchMode('camera'));
+tabUpload.addEventListener('click', ()=>switchMode('upload'));
+fileInput.addEventListener('change', e=>{ const f=e.target.files?.[0]; if(f) handleFile(f); });
+dropZone.addEventListener('dragover', e=>{ e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', ()=>dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e=>{ e.preventDefault(); dropZone.classList.remove('dragover'); const f=e.dataTransfer.files?.[0]; if(f) handleFile(f); });
+document.addEventListener('paste', e=>{ if(uploadPanel.hidden) return; for(const item of(e.clipboardData?.items||[])){ if(item.type.startsWith('image/')){ const f=item.getAsFile(); if(f){resetUpload();handleFile(f);} break; } } });
+window.addEventListener('beforeunload', stopScanner);
+</script>
+</body>
+</html>
